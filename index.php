@@ -4,7 +4,7 @@ require 'TransIP_AccessToken.php';
 function logg($txt) {
 	$currentDate = new DateTime();
 	$currentDateString = $currentDate->format('Y-m-d H:i:s');
-	$currentLogFilename = 'log.txt';
+	$currentLogFilename = '/home/timo/dynamic-ip-update/log.txt';
 	$logFileSize = filesize($currentLogFilename);
 
 	if ($logFileSize > 10000) {
@@ -18,7 +18,7 @@ function logg($txt) {
 	echo $txt;
 }
 
-$currentIpFilename = 'current_ip.txt';
+$currentIpFilename = '/home/timo/dynamic-ip-update/current_ip.txt';
 $currentIpFile = fopen($currentIpFilename, 'r');
 $currentIp = fread($currentIpFile, filesize($currentIpFilename));
 fclose($currentIpFile);
@@ -38,31 +38,38 @@ if ($currentIp === $realIp) {
 logg('Ip has changed. Going to update transip');
 logg('Changed: ' . $currentIp . ' -> ' . $realIp);
 
-$keyFilename = 'private_key.key';
-$privateKeyFile = fopen($keyFilename, 'r') or die('unable to open private key');
-$privateKey = fread($privateKeyFile, filesize($keyFilename));
-fclose($privateKeyFile);
+try {
+	$keyFilename = '/home/timo/dynamic-ip-update/private_key.key';
+	$privateKeyFile = fopen($keyFilename, 'r') or die('unable to open private key');
+	$privateKey = fread($privateKeyFile, filesize($keyFilename));
+	fclose($privateKeyFile);
 
-$transip = new TransIP_AccessToken();
-$dnsRecords = $transip->getDnsRecords();
-$dnsRecord = '';
+	$transip = new TransIP_AccessToken();
+	$dnsRecords = $transip->getDnsRecords();
+	$dnsRecord = '';
 
-foreach ($dnsRecords as $record) {
-    if ($record->name === '*' && $record->type === 'A') {
-	    $dnsRecord = $record;
-	    break;
-    }
+	foreach ($dnsRecords as $record) {
+	    if ($record->name === '*' && $record->type === 'A') {
+		    $dnsRecord = $record;
+		    break;
+	    }
+	}
+
+	if(empty($dnsRecord)) {
+		logg('Unable to retrieve type A wildcard (*) from TransIP');
+		throw new Exception('Unable to retrieve type A wildcard (*) from TransIP');
+	}
+
+
+	$dnsRecord->content = $realIp;
+	$transip->updateDnsRecord($dnsRecord);
+	logg('Done updating DNS record');
+} catch (Exception $e) {
+	logg('Something went wrong with TransIP update call. Message: ' . $e.getMessage());
+	return;
 }
-
-if(empty($dnsRecord)) {
-	logg('Unable to retrieve type A wildcard (*) from TransIP');
-	throw new Exception('Unable to retrieve type A wildcard (*) from TransIP');
-}
-
-
-$dnsRecord->content = $realIp;
-$transip->updateDnsRecord($dnsRecord);
-$ipFile = fopen('current_ip.txt', 'w');
+$ipFile = fopen('/home/timo/dynamic-ip-update/current_ip.txt', 'w');
 fwrite($ipFile, $realIp);
 fclose($ipFile);
+logg('Wrote new IP to current_ip file');
 ?>
